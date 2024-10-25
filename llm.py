@@ -1,6 +1,5 @@
 
 import cohere
-import re
  
 co = cohere.Client('WL7FBHcRECYhJqH5USMsO64KsHyfsObKbUxlS4C2')
  
@@ -67,6 +66,6 @@ def data_collection_chatbot():
 
 student_info = data_collection_chatbot()
 
-print(student_info)
+print(type(student_info))
 
 
