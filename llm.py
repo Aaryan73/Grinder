@@ -8,7 +8,7 @@ def get_response(prompt):
         model='command-r-plus',  
         max_tokens=50,
         temperature=0.7,
-        prompt=prompt + " Collect only the main relevant data: name, contact, year of study (as a number), gender, course code, sub-topic, and group size."
+        prompt=prompt + " Collect only the main relevant data: name, contact, year of study (as a number), gender, course code, sub-topic,knowledge level and group size."
     )
     return response.generations[0].text.strip()
  
@@ -44,6 +44,9 @@ def data_collection_chatbot():
     prompt = "In which sub-topic do you feel you need more help?"
     student_data["sub_topic"] = input(prompt + "\n> ")
 
+    prompt = "Whats your knowledge level?[beginner, beginner+ , intermediate, intermediate+, advance, expert]"
+    student_data["knowledge"] = input(prompt + "\n> ")
+
     prompt = "What's your prefered group size?"
     student_data["group-size"] = input(prompt + "\n> ")
     
@@ -55,6 +58,7 @@ def data_collection_chatbot():
         f"Gender - {student_data['gender']}, "
         f"Course Code - {student_data['course_code']}, "
         f"Sub-topic - {student_data['sub_topic']}, "
+        f"Knowledge level - {student_data['knowledge']}, "
         f"Group size - {student_data['group-size']}."
     )
 
@@ -65,7 +69,4 @@ def data_collection_chatbot():
     return student_summary
 
 student_info = data_collection_chatbot()
-
-print(type(student_info))
-
-
+print(student_info)
