@@ -2,6 +2,8 @@
 
 An intelligent study group matching system that uses ML-powered algorithms to connect university students with compatible study partners. The system matches students based on their course, topics of interest, knowledge level, and desired group size while optimizing for group compatibility and learning effectiveness.
 
+[Image](gif.gif)
+
 ## 🌟 Features
 
 - **Smart Matching Algorithm**: Utilizes multiple embedding models (SBERT, Cohere, Domain-specific) to find the most compatible study partners
