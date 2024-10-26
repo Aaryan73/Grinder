@@ -1,7 +1,11 @@
-
+import dotenv
 import cohere
+import os
+
+from dotenv import load_dotenv
+load_dotenv()
  
-co = cohere.Client('WL7FBHcRECYhJqH5USMsO64KsHyfsObKbUxlS4C2')
+co = cohere.Client(os.environ.get("COHERE_API_KEY"))
  
 def get_response(prompt):
     response = co.generate(
