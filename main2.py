@@ -1,9 +1,10 @@
 import streamlit as st
-import cohere
+import requests
 import re
+from typing import Dict
 
-# Initialize Cohere client
-co = cohere.Client('WL7FBHcRECYhJqH5USMsO64KsHyfsObKbUxlS4C2')
+# API endpoint configurations
+API_BASE_URL = "http://localhost:8000"  # Adjust if your FastAPI runs on a different port
 
 # Initialize session states
 if "login_details" not in st.session_state:
@@ -24,18 +25,8 @@ QUESTIONS = [
     },
     {
         "question": "What's your contact number?",
-        "key": "contact",
+        "key": "phone_number",  # Changed to match API model
         "extraction_prompt": "Extract only the numeric contact number:"
-    },
-    {
-        "question": "What year are you currently in? (1-4)",
-        "key": "year",
-        "extraction_prompt": "Extract only the year number (1-4):"
-    },
-    {
-        "question": "What's your gender? (male/female/other)",
-        "key": "gender",
-        "extraction_prompt": "Extract only the gender (male/female/other):"
     },
     {
         "question": "Which course do you need help with? (Please provide the course code)",
@@ -53,8 +44,8 @@ QUESTIONS = [
         "extraction_prompt": "Extract only the knowledge level:"
     },
     {
-        "question": "What is your desired group size? (2-9)",
-        "key": "group_size",
+        "question": "What is your desired group size? (2-5)",  # Updated to match API constraints
+        "key": "desired_group_size",
         "extraction_prompt": "Extract only the numeric group size:"
     }
 ]
@@ -69,110 +60,136 @@ def validate_input(question_idx, value):
         return bool(re.match(r'^[A-Za-z\s]{2,}$', value))
     elif question_idx == 1:  # Contact
         return bool(re.match(r'^\d{10}$', value))
-    elif question_idx == 2:  # Year
-        return value in ['1', '2', '3', '4']
-    elif question_idx == 3:  # Gender
-        return value in ['male', 'female', 'other']
-    elif question_idx == 4:  # Course code
+    elif question_idx == 2:  # Course code
         return bool(re.match(r'^[A-Za-z]{2,4}\s?\d{3}$', value.upper()))
-    elif question_idx == 5:  # Topics
+    elif question_idx == 3:  # Topics
         return len(value) >= 3
-    elif question_idx == 6:  # Knowledge level
+    elif question_idx == 4:  # Knowledge level
         return value in KNOWLEDGE_LEVELS
-    elif question_idx == 7:  # Group size
+    elif question_idx == 5:  # Group size
         try:
             size = int(value)
-            return 2 <= size <= 9
+            return 2 <= size <= 5  # Updated to match API constraints
         except ValueError:
             return False
     return False
 
 def process_input(question_idx, user_input):
-    """Enhanced input processing with improved LLM integration"""
+    """Process user input without using Cohere"""
     cleaned_input = user_input.strip()
     
-    if question_idx == 2:  # Year
-        match = re.search(r'\d+', cleaned_input)
-        if match:
-            year = match.group()
-            if year in ['1', '2', '3', '4']:
-                return year
-    
-    elif question_idx == 3:  # Gender
-        gender = cleaned_input.lower()
-        if gender in ['male', 'female', 'other']:
-            return gender
-    
-    elif question_idx == 6:  # Knowledge level
+    if question_idx == 4:  # Knowledge level
         level = cleaned_input.lower()
         if level in KNOWLEDGE_LEVELS:
             return level
-        # Use LLM to interpret unclear responses
-        extraction_prompt = f"Map this response to one of these knowledge levels {KNOWLEDGE_LEVELS}: '{cleaned_input}'"
-        response = co.generate(
-            model='command-r-plus',
-            max_tokens=300,
-            temperature=0.1,
-            prompt=extraction_prompt
-        )
-        suggested_level = response.generations[0].text.strip().lower()
-        if suggested_level in KNOWLEDGE_LEVELS:
-            return suggested_level
     
-    elif question_idx in [0, 4, 5]:  # Name, Course code, Topics
-        extraction_prompt = f"{QUESTIONS[question_idx]['extraction_prompt']} '{cleaned_input}'"
-        response = co.generate(
-            model='command-r-plus',
-            max_tokens=300,
-            temperature=0.1,
-            prompt=extraction_prompt
-        )
-        return response.generations[0].text.strip()
+    elif question_idx == 5:  # Group size
+        try:
+            size = int(re.search(r'\d+', cleaned_input).group())
+            if 2 <= size <= 5:  # Updated to match API constraints
+                return str(size)
+        except (ValueError, AttributeError):
+            pass
     
     elif question_idx == 1:  # Contact
         digits = ''.join(filter(str.isdigit, cleaned_input))
         if len(digits) == 10:
             return digits
     
-    elif question_idx == 7:  # Group size
-        try:
-            size = int(re.search(r'\d+', cleaned_input).group())
-            if 2 <= size <= 9:
-                return str(size)
-        except (ValueError, AttributeError):
-            pass
-    
     return cleaned_input
 
+def create_user_and_find_group(user_data: Dict):
+    """Create user and find study group through API"""
+    try:
+        response = requests.post(f"{API_BASE_URL}/users/", json=user_data)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error creating user: {str(e)}")
+        return None
+
+def check_group_status(phone_number: str):
+    """Check group status through API"""
+    try:
+        response = requests.get(f"{API_BASE_URL}/group-status/{phone_number}")
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error checking status: {str(e)}")
+        return None
+
 def display_sidebar():
-    """Enhanced sidebar display with more information"""
+    """Enhanced sidebar display with API integration"""
     if st.session_state.login_details:
         st.sidebar.title("📚 Student Profile")
-        fields = ["Name", "Contact", "Year", "Gender", "Course", "Topics", "Knowledge Level", "Group Size"]
+        fields = ["Name", "Contact", "Course", "Topics", "Knowledge Level", "Group Size"]
         for field, value in zip(fields, st.session_state.login_details):
             st.sidebar.markdown(f"**{field}:** {value}")
         
         if st.sidebar.button("🔍 Find Study Partners"):
             st.sidebar.markdown("### Looking for study partners...")
-            matching_prompt = f"""
-            Find suitable study partners for a student with:
-            Course: {st.session_state.student_data.get('course_code')}
-            Topics: {st.session_state.student_data.get('topics')}
-            Knowledge Level: {st.session_state.student_data.get('knowledge_level')}
-            Preferred Group Size: {st.session_state.student_data.get('group_size')}
-            """
-            response = co.generate(
-                model='command-r-plus',
-                max_tokens=300,
-                temperature=0.7,
-                prompt=matching_prompt
-            )
-            st.sidebar.success("Matching complete!")
-            st.sidebar.info(response.generations[0].text.strip())
+            
+            # Prepare user data for API
+            user_data = {
+                "name": st.session_state.student_data["name"],
+                "phone_number": st.session_state.student_data["phone_number"],
+                "course_code": st.session_state.student_data["course_code"],
+                "topics": st.session_state.student_data["topics"],
+                "knowledge_level": st.session_state.student_data["knowledge_level"],
+                "desired_group_size": int(st.session_state.student_data["desired_group_size"])
+            }
+            
+            # Call API to create user and find group
+            result = create_user_and_find_group(user_data)
+            
+            if result:
+                st.sidebar.success("Successfully joined the matching queue!")
+                st.sidebar.info("""
+                Your request has been added to the queue. 
+                Please check the Status tab later using your phone number to see if your group is complete.
+                """)
+            else:
+                st.sidebar.error("Failed to join the matching queue. Please try again.")
         
         st.sidebar.divider()
         st.sidebar.caption("*AI-powered matching in progress")
 
+def display_group_status(status_data):
+    """Display group status information"""
+    if status_data["is_complete"]:
+        st.success("🎉 Your group is complete!")
+        if status_data.get("group"):
+            group = status_data["group"]
+            st.write("### Group Details")
+            st.write(f"**Course:** {group['course_code']}")
+            st.write(f"**Group Size:** {len(group['members'])}/{group['max_size']}")
+            st.write(f"**Created At:** {group['created_at']}")
+            if 'completed_at' in group:
+                st.write(f"**Completed At:** {group['completed_at']}")
+            
+            st.write("### Group Members")
+            for member in group["members"]:
+                st.write(f"- **Name:** {member['name']}")
+                st.write(f"  **Phone:** {member['phone_number']}")
+                st.write(f"  **Knowledge Level:** {member['knowledge_level']}")
+                st.write(f"  **Topics:** {member['topics']}")
+            
+            if group.get('metrics'):
+                st.write("### Group Metrics")
+                metrics = group['metrics']
+                st.write(f"**Knowledge Balance:** {metrics['knowledge_balance']:.2f}")
+                st.write(f"**Topic Similarity:** {metrics['topic_similarity']:.2f}")
+                st.write(f"**Overall Compatibility:** {metrics['overall_compatibility']:.2f}")
+    else:
+        st.info("🕒 Your group is still being formed. Please check back later!")
+        if status_data.get("group"):
+            group = status_data["group"]
+            st.write(f"Current members: {len(group['members'])}/{group['max_size']}")
+            st.write("### Current Members")
+            for member in group["members"]:
+                st.write(f"- **Name:** {member['name']}")
+                st.write(f"  **Knowledge Level:** {member['knowledge_level']}")
+                
 def main():
     st.title("🎓 Smart Study Partner Finder")
     
@@ -207,7 +224,7 @@ def main():
                     if st.session_state.current_question < len(QUESTIONS):
                         next_message = QUESTIONS[st.session_state.current_question]["question"]
                     else:
-                        next_message = "Great! Registration complete. Check the sidebar for your profile and to find study partners!"
+                        next_message = "Great! Registration complete. Check the sidebar for your profile and click 'Find Study Partners' to join the matching queue!"
                         st.session_state.login_details = list(st.session_state.student_data.values())
                     
                     # Add assistant response
@@ -221,17 +238,15 @@ def main():
             st.rerun()
     
     with tab2:
-        st.write("### Study Group Status")
-        contact = st.text_input("Enter your contact number to check status")
+        st.write("### Check Your Study Group Status")
+        contact = st.text_input("Enter your contact number")
         if contact:
-            if contact == st.session_state.student_data.get("contact"):
-                st.info("Your study partner matching is in progress. Check back soon!")
-                if st.session_state.student_data:
-                    st.write("### Your Profile")
-                    for key, value in st.session_state.student_data.items():
-                        st.write(f"**{key.replace('_', ' ').title()}:** {value}")
+            if re.match(r'^\d{10}$', contact):
+                status_data = check_group_status(contact)
+                if status_data:
+                    display_group_status(status_data)
             else:
-                st.error("No matching record found.")
+                st.error("Please enter a valid 10-digit phone number.")
 
     display_sidebar()
 
